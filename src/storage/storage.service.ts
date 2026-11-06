@@ -1,10 +1,12 @@
 import {
+  CreateBucketCommand,
   DeleteObjectCommand,
+  HeadBucketCommand,
   GetObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v4 as uuid } from 'uuid';
 import * as path from 'path';
@@ -17,24 +19,62 @@ const CONVERTIBLE_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const PAGE_MARGIN = 36; // 0.5in, en puntos PDF
 
 @Injectable()
-export class StorageService {
+export class StorageService implements OnModuleInit {
   private s3: S3Client;
   private bucket: string;
   private publicUrl: string;
+
+  // Cliente usado solo para firmar enlaces de descarga. Usa la URL pública
+  // (la que ve el navegador) para que el enlace funcione fuera de Docker.
+  private presigner: S3Client;
+  private readonly logger = new Logger(StorageService.name);
 
   constructor(private config: ConfigService) {
     this.bucket = this.config.get<string>('RUSTFS_BUCKET')!;
     this.publicUrl = this.config.get<string>('RUSTFS_PUBLIC_URL')!;
 
-    this.s3 = new S3Client({
-      endpoint: this.config.get<string>('RUSTFS_ENDPOINT'),
+    const baseConfig = {
       region: 'us-east-1',
       credentials: {
         accessKeyId: this.config.get<string>('RUSTFS_ACCESS_KEY')!,
         secretAccessKey: this.config.get<string>('RUSTFS_SECRET_KEY')!,
       },
       forcePathStyle: true,
+    };
+
+    this.s3 = new S3Client({
+      ...baseConfig,
+      endpoint: this.config.get<string>('RUSTFS_ENDPOINT'),
     });
+    this.presigner = new S3Client({
+      ...baseConfig,
+      endpoint: this.publicUrl || this.config.get<string>('RUSTFS_ENDPOINT'),
+    });
+  }
+
+  // Crea el bucket al arrancar si todavía no existe. Reintenta unos segundos
+  // por si el servicio de almacenamiento aún está iniciando.
+  async onModuleInit(): Promise<void> {
+    for (let intento = 1; intento <= 10; intento++) {
+      try {
+        await this.s3.send(new HeadBucketCommand({ Bucket: this.bucket }));
+        return;
+      } catch {
+        try {
+          await this.s3.send(new CreateBucketCommand({ Bucket: this.bucket }));
+          this.logger.log(`Bucket "${this.bucket}" creado`);
+          return;
+        } catch (error) {
+          if (intento === 10) {
+            this.logger.error(
+              `No se pudo crear el bucket "${this.bucket}": ${error}`,
+            );
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 3000));
+        }
+      }
+    }
   }
 
   async uploadFile(
@@ -105,7 +145,7 @@ export class StorageService {
       Bucket: this.bucket,
       Key: key,
     });
-    return generatePresignedUrl(this.s3, command, { expiresIn });
+    return generatePresignedUrl(this.presigner, command, { expiresIn });
   }
 
   async deleteFile(key: string): Promise<void> {

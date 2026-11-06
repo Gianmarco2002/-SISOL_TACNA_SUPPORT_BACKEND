@@ -46,7 +46,7 @@ export class UserController {
     return currentUser;
   }
 
-  @Public()
+  // Ya no es público: requiere sesión iniciada o la cabecera x-admin-key.
   @Post('/')
   async createUser(@Body() body: CreateUser) {
     return await this.userService.createUser(body);

@@ -139,10 +139,13 @@ export class UserService {
     const user = await this.getUserById(id);
     if (!user) throw new NotFoundException('No existe el usuario');
 
-    // Si viene de un restablecimiento no se pide la clave actual
-    if (!user.must_change_password) {
-      const ok = await bcrypt.compare(body.current_password ?? '', user.password);
-      if (!ok) throw new BadRequestException('Contraseña actual incorrecta');
+    const ok = await bcrypt.compare(body.current_password ?? '', user.password);
+    if (!ok) throw new BadRequestException('La contraseña actual es incorrecta');
+
+    if (body.new_password === body.current_password) {
+      throw new BadRequestException(
+        'La nueva contraseña debe ser distinta a la actual',
+      );
     }
 
     if (body.new_password === this.defaultPassword) {

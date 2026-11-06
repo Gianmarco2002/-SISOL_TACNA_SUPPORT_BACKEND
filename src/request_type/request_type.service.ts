@@ -12,8 +12,16 @@ export class RequestTypeService {
     private requestTypeRepository: Repository<RequestType>,
   ) {}
 
-  getAllRequestType() {
-    return this.requestTypeRepository.find();
+  async getAllRequestType() {
+    const tipos = await this.requestTypeRepository.find({ order: { id: 'ASC' } });
+    // "Colocar en proceso" se muestra justo debajo de "Liberar ticket"
+    const i = tipos.findIndex((t) => t.code === 'TICKET_IN_PROCESS');
+    const j = tipos.findIndex((t) => t.code === 'TICKET_RELEASE_LT30');
+    if (i !== -1 && j !== -1 && i !== j + 1) {
+      const [enProceso] = tipos.splice(i, 1);
+      tipos.splice(tipos.findIndex((t) => t.code === 'TICKET_RELEASE_LT30') + 1, 0, enProceso);
+    }
+    return tipos;
   }
 
   getRequestTypeById(id: number) {

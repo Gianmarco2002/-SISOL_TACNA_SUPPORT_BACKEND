@@ -7,6 +7,18 @@ export async function seedRequestType(dataSource: DataSource) {
   const count = await repository.count();
 
   if (count > 0) {
+    // Tipos agregados después de la carga inicial
+    const enProceso = await repository.findOneBy({ code: 'TICKET_IN_PROCESS' });
+    if (!enProceso) {
+      await repository.save({
+        short_name: 'Colocar en proceso',
+        long_name: 'Solicitud para colocar un ticket en proceso',
+        code: 'TICKET_IN_PROCESS',
+        emoji: '⏳',
+        is_active: true,
+      });
+      console.log('RequestType TICKET_IN_PROCESS agregado');
+    }
     console.log('RequestType ya existe');
     return;
   }
@@ -17,6 +29,13 @@ export async function seedRequestType(dataSource: DataSource) {
       long_name: 'Solicitud de liberación de tickets',
       code: 'TICKET_RELEASE_LT30',
       emoji: '🔓',
+      is_active: true,
+    },
+    {
+      short_name: 'Colocar en proceso',
+      long_name: 'Solicitud para colocar un ticket en proceso',
+      code: 'TICKET_IN_PROCESS',
+      emoji: '⏳',
       is_active: true,
     },
     // {

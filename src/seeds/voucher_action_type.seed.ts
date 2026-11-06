@@ -7,6 +7,16 @@ export async function seedVoucherActionType(dataSource: DataSource) {
   const count = await repository.count();
 
   if (count > 0) {
+    // Acciones agregadas después de la carga inicial
+    const enProceso = await repository.findOneBy({ code: 'EN_PROC' });
+    if (!enProceso) {
+      await repository.save({
+        name: 'Colocar ticket en proceso',
+        code: 'EN_PROC',
+        is_active: true,
+      });
+      console.log('VoucherActionType EN_PROC agregado');
+    }
     console.log('VoucherActionType ya existe');
     return;
   }
@@ -15,6 +25,11 @@ export async function seedVoucherActionType(dataSource: DataSource) {
     {
       name: 'Liberación de ticket menor a 30 días',
       code: 'LIB_30',
+      is_active: true,
+    },
+    {
+      name: 'Colocar ticket en proceso',
+      code: 'EN_PROC',
       is_active: true,
     },
     {

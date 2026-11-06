@@ -11,6 +11,7 @@ import { User } from './user.entity';
 import { UpdateUser } from './dto/updateUser.dto';
 import { CreateUser } from './dto/createUser.dto';
 import { UpdateUserPassword } from './dto/updateUserPassword.dto';
+import { ChangeOwnPassword } from './dto/changeOwnPassword.dto';
 import * as bcrypt from 'bcrypt';
 import { LoginUser } from './dto/loginUser.dto';
 import { JwtService } from '@nestjs/jwt';
@@ -132,6 +133,28 @@ export class UserService {
     currentUser.password = await bcrypt.hash(this.defaultPassword, 10);
     currentUser.must_change_password = true;
     return await this.userRepository.save(currentUser);
+  }
+
+  async changeOwnPassword(id: number, body: ChangeOwnPassword) {
+    const user = await this.getUserById(id);
+    if (!user) throw new NotFoundException('No existe el usuario');
+
+    // Si viene de un restablecimiento no se pide la clave actual
+    if (!user.must_change_password) {
+      const ok = await bcrypt.compare(body.current_password ?? '', user.password);
+      if (!ok) throw new BadRequestException('Contraseña actual incorrecta');
+    }
+
+    if (body.new_password === this.defaultPassword) {
+      throw new BadRequestException(
+        'La nueva contraseña no puede ser la contraseña temporal',
+      );
+    }
+
+    user.password = await bcrypt.hash(body.new_password, 10);
+    user.must_change_password = false;
+    await this.userRepository.save(user);
+    return { success: true };
   }
 
   // ---------- Administración de usuarios (panel admin) ----------

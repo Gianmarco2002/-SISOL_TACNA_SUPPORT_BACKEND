@@ -18,6 +18,7 @@ import { UpdateUser } from './dto/updateUser.dto';
 import { UpdateUserPassword } from './dto/updateUserPassword.dto';
 import { LoginUser } from './dto/loginUser.dto';
 import { SetActiveUser } from './dto/setActiveUser.dto';
+import { ChangeOwnPassword } from './dto/changeOwnPassword.dto';
 import { Public } from 'src/auth/public.decorator';
 
 function verificarAdmin(adminKey: string | undefined) {
@@ -76,10 +77,21 @@ export class UserController {
   }
 
   @Get('/verify-session')
-  verifySession() {
+  async verifySession(@Request() req) {
+    const user = await this.userService.getUserById(Number(req.user?.sub));
+    if (!user || user.is_active === false) {
+      throw new UnauthorizedException('Sesión no válida');
+    }
     return {
       success: true,
+      must_change_password: user.must_change_password,
     };
+  }
+
+  // El usuario cambia su propia contraseña (id tomado del token)
+  @Patch('/me/password')
+  async changeOwnPassword(@Request() req, @Body() body: ChangeOwnPassword) {
+    return await this.userService.changeOwnPassword(Number(req.user?.sub), body);
   }
 
   @Get('/:id')

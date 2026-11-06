@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -107,6 +109,12 @@ export class UserService {
       throw new BadRequestException('Contraseña incorrecta');
     }
 
+    if (user.is_active === false) {
+      throw new ForbiddenException(
+        'Tu cuenta está desactivada. Comunícate con soporte.',
+      );
+    }
+
     const payload = {
       sub: user.id,
       username: user.username,
@@ -124,5 +132,63 @@ export class UserService {
     currentUser.password = await bcrypt.hash(this.defaultPassword, 10);
     currentUser.must_change_password = true;
     return await this.userRepository.save(currentUser);
+  }
+
+  // ---------- Administración de usuarios (panel admin) ----------
+
+  async getAllUsersAdmin() {
+    const users = await this.userRepository.find({ order: { id: 'ASC' } });
+    const counts: { user_id: number; total: string }[] =
+      await this.userRepository.manager.query(
+        'SELECT user_id, COUNT(*) AS total FROM ticket GROUP BY user_id',
+      );
+    const porUsuario = new Map(counts.map((c) => [Number(c.user_id), Number(c.total)]));
+    return users.map((u) => ({
+      id: u.id,
+      username: u.username,
+      email: u.email,
+      is_active: u.is_active,
+      must_change_password: u.must_change_password,
+      createdAt: u.createdAt,
+      ticket_count: porUsuario.get(u.id) ?? 0,
+    }));
+  }
+
+  async resetPasswordAdmin(id: number) {
+    const user = await this.resetPassword(id);
+    if (!user) throw new NotFoundException('No existe el usuario');
+    return { username: user.username, password: this.defaultPassword };
+  }
+
+  async setActiveAdmin(id: number, isActive: boolean) {
+    const user = await this.getUserById(id);
+    if (!user) throw new NotFoundException('No existe el usuario');
+    user.is_active = isActive;
+    await this.userRepository.save(user);
+    return { id: user.id, is_active: user.is_active };
+  }
+
+  async deleteUserAdmin(id: number) {
+    const user = await this.getUserById(id);
+    if (!user) throw new NotFoundException('No existe el usuario');
+    const [{ total }] = await this.userRepository.manager.query(
+      'SELECT COUNT(*) AS total FROM ticket WHERE user_id = $1',
+      [id],
+    );
+    if (Number(total) > 0) {
+      throw new ConflictException(
+        'Este usuario tiene solicitudes registradas. Desactívalo en lugar de eliminarlo.',
+      );
+    }
+    await this.userRepository.manager.query(
+      'DELETE FROM push_subscription WHERE user_id = $1',
+      [id],
+    );
+    await this.userRepository.manager.query(
+      'UPDATE ticket_comment SET user_id = NULL WHERE user_id = $1',
+      [id],
+    );
+    await this.userRepository.delete({ id });
+    return { id };
   }
 }
